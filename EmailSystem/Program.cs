@@ -14,23 +14,21 @@ class Program
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         PrintBanner();
 
-        // ── 1. Autenticação via token temporário ──────────────────────────────
-        string tokenFile = args.Length > 0 ? args[0] : DefaultTokenFile;
-        Console.ForegroundColor = ConsoleColor.DarkGray;
-        Console.WriteLine($"  Token file: {tokenFile}");
-        Console.ResetColor();
-
-        string? pat = TokenAuthService.ReadAndDecrypt(tokenFile);
+        // ── 1. Autenticação ───────────────────────────────────────────────────
+        string? pat = TryLoadToken(args);
         if (pat == null)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("  ✗ Autenticação falhou. Certifique-se que o GitHubTokenGen está rodando.");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("  ⚠ Token temporário não encontrado.");
+            Console.WriteLine("  Digite o PAT do GitHub manualmente (ou Enter para sair):");
             Console.ResetColor();
-            return;
+            Console.Write("  PAT: ");
+            pat = ReadPassword();
+            if (string.IsNullOrWhiteSpace(pat)) return;
         }
 
         Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine("  ✓ Autenticado via token temporário.");
+        Console.WriteLine("  ✓ Autenticado.");
         Console.ResetColor();
         Console.WriteLine();
 
@@ -96,6 +94,43 @@ class Program
             }
             Console.WriteLine();
         }
+    }
+
+    // ── Busca token em múltiplos locais ──────────────────────────────────────
+
+    static string? TryLoadToken(string[] args)
+    {
+        // Locais onde o arquivo de token pode estar
+        var candidates = new List<string>();
+
+        if (args.Length > 0)
+            candidates.Add(args[0]);
+
+        // Pasta do exe
+        candidates.Add(DefaultTokenFile);
+
+        // Pasta do GitHubTokenGen (irmã do EmailSystem)
+        string baseDir = AppContext.BaseDirectory;
+        candidates.Add(Path.Combine(baseDir, "..", "..", "..", "..", "..", "token", "GitHubTokenGen", "bin", "Debug", "net8.0-windows", "token.ini.nula.onemapasofficeal.github.roloxstution"));
+        candidates.Add(Path.Combine(baseDir, "..", "..", "..", "..", "token", "GitHubTokenGen", "bin", "Debug", "net8.0-windows", "token.ini.nula.onemapasofficeal.github.roloxstution"));
+
+        // Desktop e pasta atual
+        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "token.ini.nula.onemapasofficeal.github.roloxstution"));
+        candidates.Add(Path.Combine(Directory.GetCurrentDirectory(), "token.ini.nula.onemapasofficeal.github.roloxstution"));
+
+        foreach (var path in candidates)
+        {
+            string full = Path.GetFullPath(path);
+            if (File.Exists(full))
+            {
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  Token: {full}");
+                Console.ResetColor();
+                string? result = TokenAuthService.ReadAndDecrypt(full);
+                if (result != null) return result;
+            }
+        }
+        return null;
     }
 
     // ── Envio de e-mail ───────────────────────────────────────────────────────
